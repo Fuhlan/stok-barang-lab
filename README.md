@@ -12,12 +12,11 @@ Pusdiklat Keuangan Publik BPPK - Kementerian Keuangan RI bekerja sama dengan ADI
 - **Judul Kasus**: Penerimaan Stok Barang (Halaman 19 Panduan Capstone)
 - **Nama Tim / Peserta**: Tim Capstone A10
 - **Anggota & Pembagian Kontribusi**:
-  1. **Danang & Tim Pengembang**:
-     - _Infrastruktur & Broker Topology_: Konfigurasi RabbitMQ (Direct Exchange `inventory`, DLX `inventory.dlx`, antrean `stock_updates`, DLQ `stock_updates.dlq`, dan Docker Compose).
-     - _Database Design & Idempotency Engine_: Skema PostgreSQL (DDL `stok_barang`, `ledger_penerimaan`, `rejected_events`) dan transaksi atomik database (`BEGIN ... FOR UPDATE ... COMMIT/ROLLBACK`).
-     - _Layanan Consumer (Worker)_: Implementasi manual acknowledgement, prefetch QoS, dead-letter reject routing, serta penanganan crash recovery.
-     - _Layanan Ingress Producer (API & CLI)_: Endpoint HTTP REST Express (`/penerimaan`) dengan publisher confirm dan pengirim event CLI batch/sintetis.
-     - _Automated Testing & Skenario Modular_: Pembuatan runner pengujian mandiri U1, U2, U3, U4 serta pengujian terpadu orchestrator dan pelaporan bukti uji.
+  - _Infrastruktur & Broker Topology_: Konfigurasi RabbitMQ (Direct Exchange `inventory`, DLX `inventory.dlx`, antrean `stock_updates`, DLQ `stock_updates.dlq`, dan Docker Compose).
+  - _Database Design & Idempotency Engine_: Skema PostgreSQL (DDL `stok_barang`, `ledger_penerimaan`, `rejected_events`) dan transaksi atomik database (`BEGIN ... FOR UPDATE ... COMMIT/ROLLBACK`).
+  - _Layanan Consumer (Worker)_: Implementasi manual acknowledgement, prefetch QoS, dead-letter reject routing, serta penanganan crash recovery.
+  - _Layanan Ingress Producer (API & CLI)_: Endpoint HTTP REST Express (`/penerimaan`) dengan publisher confirm dan pengirim event CLI batch/sintetis.
+  - _Automated Testing & Skenario Modular_: Pembuatan runner pengujian mandiri U1, U2, U3, U4 serta pengujian terpadu orchestrator dan pelaporan bukti uji.
 
 ---
 
@@ -98,38 +97,58 @@ WORKER_ID=worker-stok-1
 flowchart LR
     subgraph Producer Layer
         P1["Producer HTTP API<br/>(Express 3010)"]
-        P2["Producer CLI /<br/>Test Automator"]
+        P2["Producer CLI / Test Automator"]
     end
 
-    subgraph Message Broker (RabbitMQ)
+    subgraph Message Broker["Message Broker (RabbitMQ)"]
         EX["Exchange: inventory<br/>(Direct, Durable)"]
         Q["Queue: stock_updates<br/>(Durable, Ack: Manual)"]
         DLX["DLX: inventory.dlx<br/>(Direct, Durable)"]
         DLQ["DLQ: stock_updates.dlq<br/>(Durable)"]
     end
 
-    subgraph Consumer & Storage Layer
-        W["Worker Consumer<br/>(competing instance)"]
-        DB[("PostgreSQL 16<br/>Database")]
-        TBL1["stok_barang<br/>(Saldo Real-time)"]
-        TBL2["ledger_penerimaan<br/>(Audit Trail & Idempotensi)"]
-        TBL3["rejected_events<br/>(Dead Letter Log)"]
+    subgraph Consumer and Storage Layer
+        W["Worker Consumer<br/>(Competing Instance)"]
+
+        subgraph Database
+            DB[("PostgreSQL 16<br/>Database")]
+            TBL1["stok_barang<br/>(Saldo Real-time)"]
+            TBL2["ledger_penerimaan<br/>(Audit Trail & Idempotensi)"]
+            TBL3["rejected_events<br/>(Dead Letter Log)"]
+        end
     end
 
-    P1 -- "stock.received" --> EX
-    P2 -- "stock.received" --> EX
-    EX -- "Routing Key: stock.received" --> Q
-    Q -- "channel.consume (prefetch=5)" --> W
+    %% Producer to Exchange
+    P1 -->|"stock.received"| EX
+    P2 -->|"stock.received"| EX
 
-    W -- "Rejected/Cacat (nack no-requeue)" --> DLX
-    DLX -- "Routing Key: stock.rejected" --> DLQ
+    %% Exchange to Queue
+    EX -->|"Routing Key: stock.received"| Q
 
-    W -- "1. BEGIN Transaction" --> DB
-    W -- "2. Check event_id di ledger (FOR UPDATE)" --> TBL2
-    W -- "3. Update Saldo (FOR UPDATE)" --> TBL1
-    W -- "4. Insert Ledger Mutasi" --> TBL2
-    W -- "5. COMMIT & channel.ack" --> DB
-    W -- "Insert Log Penolakan" --> TBL3
+    %% Queue to Worker
+    Q -->|"channel.consume (prefetch=5)"| W
+
+    %% Worker Processing Flow
+    W -->|"1. BEGIN Transaction"| DB
+    W -->|"2. Check event_id (FOR UPDATE)"| TBL2
+    W -->|"3. Update Saldo (FOR UPDATE)"| TBL1
+    W -->|"4. Insert Ledger Mutasi"| TBL2
+    W -->|"5. COMMIT & channel.ack"| DB
+
+    %% Rejection Flow
+    W -->|"Rejected/Cacat (nack no-requeue)"| DLX
+    DLX -->|"Routing Key: stock.rejected"| DLQ
+    W -->|"Insert Log Penolakan"| TBL3
+
+    %% Styling
+    style Producer Layer fill:#f5f5f5,stroke:#333
+    style Message Broker fill:#e8f4f8,stroke:#333
+    style Consumer and Storage Layer fill:#f0fff0,stroke:#333
+    style Database fill:#fafafa,stroke:#999
+    style EX stroke:#2196F3,stroke-width:2px
+    style Q stroke:#2196F3,stroke-width:2px
+    style W stroke:#4CAF50,stroke-width:2px
+    style DB stroke:#ff9800,stroke-width:2px
 ```
 
 ---
