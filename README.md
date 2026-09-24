@@ -78,7 +78,7 @@ DATABASE_URL=postgres://simpel:simpel123@localhost:5432/simpel
 
 # Konfigurasi Service & Worker
 PORT_PRODUCER=3010
-WORKER_PREFETCH=5
+WORKER_PREFETCH=1
 WORKER_KERJA_MS=50
 WORKER_ID=worker-stok-1
 ```
