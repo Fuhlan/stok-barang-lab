@@ -1,0 +1,28 @@
+{
+  "name": "stok-barang-lab",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capstone Project A10 - Penerimaan Stok Barang (PJJ Message Broker Microservices 2026)",
+  "scripts": {
+    "db:siapkan": "node --env-file=.env tools/siapkan-db.js",
+    "db:reset": "node --env-file=.env tools/reset-demo.js",
+    "producer:api": "node --env-file=.env layanan/producer-api.js",
+    "producer:cli": "node --env-file=.env layanan/producer-cli.js",
+    "worker": "node --env-file=.env layanan/worker.js",
+    "kirim": "node --env-file=.env tools/kirim.js",
+    "hasil": "node --env-file=.env tools/hasil.js",
+    "uji": "node --env-file=.env tools/uji-skenario.js",
+    "uji:u1": "node --env-file=.env tools/uji-skenario-u1.js",
+    "uji:u2": "node --env-file=.env tools/uji-skenario-u2.js",
+    "uji:u3": "node --env-file=.env tools/uji-skenario-u3.js",
+    "uji:u4": "node --env-file=.env tools/uji-skenario-u4.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.4",
+    "express": "^4.19.2",
+    "pg": "^8.11.3"
+  },
+  "engines": {
+    "node": ">=20.6"
+  }
+}

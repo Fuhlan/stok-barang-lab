@@ -1,0 +1,42 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: stok-rabbitmq
+    hostname: stok-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-simpel}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-simpel123}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_UI_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "gosu", "rabbitmq", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: stok-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-simpel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simpel123}
+      POSTGRES_DB: ${POSTGRES_DB:-simpel}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ./db:/docker-entrypoint-initdb.d:ro
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-simpel} -d ${POSTGRES_DB:-simpel}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  rabbitmq-data:
+  postgres-data:
