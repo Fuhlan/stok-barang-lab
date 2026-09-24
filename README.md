@@ -10,13 +10,18 @@ Pusdiklat Keuangan Publik BPPK - Kementerian Keuangan RI bekerja sama dengan ADI
 
 - **Kode Kasus**: `A10`
 - **Judul Kasus**: Penerimaan Stok Barang (Halaman 19 Panduan Capstone)
-- **Nama Tim / Peserta**: Tim Capstone A10
-- **Anggota & Pembagian Kontribusi**:
+- **Nama Tim / Peserta**:
+  (Kelompok 4)
+  - Fajar Irvandi
+  - Danang Ajie Nugraha
+  - Taufiq Mahendra
+- **Pembagian Kontribusi**:
   - _Infrastruktur & Broker Topology_: Konfigurasi RabbitMQ (Direct Exchange `inventory`, DLX `inventory.dlx`, antrean `stock_updates`, DLQ `stock_updates.dlq`, dan Docker Compose).
   - _Database Design & Idempotency Engine_: Skema PostgreSQL (DDL `stok_barang`, `ledger_penerimaan`, `rejected_events`) dan transaksi atomik database (`BEGIN ... FOR UPDATE ... COMMIT/ROLLBACK`).
   - _Layanan Consumer (Worker)_: Implementasi manual acknowledgement, prefetch QoS, dead-letter reject routing, serta penanganan crash recovery.
   - _Layanan Ingress Producer (API & CLI)_: Endpoint HTTP REST Express (`/penerimaan`) dengan publisher confirm dan pengirim event CLI batch/sintetis.
   - _Automated Testing & Skenario Modular_: Pembuatan runner pengujian mandiri U1, U2, U3, U4 serta pengujian terpadu orchestrator dan pelaporan bukti uji.
+  - _Technical Documentation & Presentation_: Pembuatan dokumentasi teknis dan presentasi hasil.
 
 ---
 
