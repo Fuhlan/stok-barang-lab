@@ -1,5 +1,6 @@
 // Skenario Pengujian U2: Recovery 5 Event Baru (G01-G05) Saat/Pasca Simulasi Downtime Worker
 // Halaman 7 Panduan Capstone Project: Antrean Tahan Saat Worker Pulih
+const amqp = require("amqplib");
 const { Pool } = require("pg");
 const { writeFileSync, mkdirSync } = require("node:fs");
 const { setTimeout: delay } = require("node:timers/promises");
@@ -47,15 +48,53 @@ async function jalankanU2(options = {}) {
     u2Events.push(event);
   }
 
-  console.log(
-    "🚀 5 event G01-G05 dipublikasikan. Menunggu konsumsi worker (3 detik)...",
-  );
-  await delay(3000);
+  const amqpUrl = process.env.AMQP_URL || "amqp://simpel:simpel123@localhost:5672";
+  let conn = options.conn;
+  let ch = options.ch;
+  let closeAmqpLocal = false;
 
-  const u2Db = await pool.query(
+  if (!ch) {
+    conn = await amqp.connect(amqpUrl);
+    ch = await conn.createChannel();
+    closeAmqpLocal = true;
+  }
+
+  // Cek antrean RabbitMQ sesaat setelah publish
+  const qState1 = await ch.checkQueue("stock_updates");
+  const queuedCountInitially = qState1.messageCount;
+  console.log(`[U2 Antrean] Jumlah pesan di queue 'stock_updates' saat ini: ${queuedCountInitially}`);
+
+  let u2Db = await pool.query(
     "SELECT count(*)::int AS count, sum(quantity)::int AS total_qty FROM ledger_penerimaan WHERE event_id LIKE $1",
     [`${runId}-G%`],
   );
+
+  // Jika worker sedang mati (event belum terproses dan ada antrean), tunggu worker dinyalakan
+  if (u2Db.rows[0].count < 5) {
+    console.log(
+      "\n⏳ Terdeteksi worker sedang TIDAK AKTIF atau pesan masih di antrean.",
+    );
+    console.log(
+      "👉 Silakan jalankan 'npm run worker' pada terminal lain untuk memulihkan consumer...",
+    );
+    console.log("   Menunggu consumer aktif dan memproses kelima pesan G01-G05...");
+
+    const maxWaitMs = options.waitTimeoutMs || 30000;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      await delay(1000);
+      u2Db = await pool.query(
+        "SELECT count(*)::int AS count, sum(quantity)::int AS total_qty FROM ledger_penerimaan WHERE event_id LIKE $1",
+        [`${runId}-G%`],
+      );
+      if (u2Db.rows[0].count === 5) {
+        console.log("✅ Worker terdeteksi pulih! Kelima pesan G01-G05 telah berhasil dikonsumsi.");
+        break;
+      }
+    }
+  }
+
   const totalLedgerRes = await pool.query(
     "SELECT count(*)::int AS count FROM ledger_penerimaan",
   );
@@ -90,6 +129,10 @@ async function jalankanU2(options = {}) {
 
   console.log(`[U2 Status] ${pass ? "LULUS [✅ PASS]" : "GAGAL [❌ FAIL]"}`);
 
+  if (closeAmqpLocal) {
+    await ch.close().catch(() => {});
+    await conn.close().catch(() => {});
+  }
   if (!options.pool) await pool.end();
   if (!options.publisher) await publisher.close();
 
