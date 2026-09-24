@@ -27,7 +27,7 @@ async function jalankanU1(options = {}) {
     `\n==============================================================`,
   );
   console.log(
-    `==== SKENARIO U1: Beban Awal Normal (20 Event Valid) [${runId}] =====`,
+    `== SKENARIO U1: Beban Awal Normal (20 Event Valid) [${runId}] ===`,
   );
   console.log(`==============================================================`);
 

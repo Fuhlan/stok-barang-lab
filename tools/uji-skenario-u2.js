@@ -26,7 +26,7 @@ async function jalankanU2(options = {}) {
     `\n==============================================================`,
   );
   console.log(
-    `= SKENARIO U2: Recovery Downtime (5 Event Baru G01-G05) [${runId}] =`,
+    `SKENARIO U2: Recovery Downtime (5 Event Baru G01-G05) [${runId}]`,
   );
   console.log(`==============================================================`);
 
@@ -48,7 +48,8 @@ async function jalankanU2(options = {}) {
     u2Events.push(event);
   }
 
-  const amqpUrl = process.env.AMQP_URL || "amqp://simpel:simpel123@localhost:5672";
+  const amqpUrl =
+    process.env.AMQP_URL || "amqp://simpel:simpel123@localhost:5672";
   let conn = options.conn;
   let ch = options.ch;
   let closeAmqpLocal = false;
@@ -62,7 +63,9 @@ async function jalankanU2(options = {}) {
   // Cek antrean RabbitMQ sesaat setelah publish
   const qState1 = await ch.checkQueue("stock_updates");
   const queuedCountInitially = qState1.messageCount;
-  console.log(`[U2 Antrean] Jumlah pesan di queue 'stock_updates' saat ini: ${queuedCountInitially}`);
+  console.log(
+    `[U2 Antrean] Jumlah pesan di queue 'stock_updates' saat ini: ${queuedCountInitially}`,
+  );
 
   let u2Db = await pool.query(
     "SELECT count(*)::int AS count, sum(quantity)::int AS total_qty FROM ledger_penerimaan WHERE event_id LIKE $1",
@@ -72,14 +75,16 @@ async function jalankanU2(options = {}) {
   // Jika worker sedang mati (event belum terproses dan ada antrean), tunggu worker dinyalakan
   if (u2Db.rows[0].count < 5) {
     console.log(
-      "\n⏳ Terdeteksi worker sedang TIDAK AKTIF atau pesan masih di antrean.",
+      "\n🚫 Terdeteksi worker sedang TIDAK AKTIF atau pesan masih di antrean.",
     );
     console.log(
       "👉 Silakan jalankan 'npm run worker' pada terminal lain untuk memulihkan consumer...",
     );
-    console.log("   Menunggu consumer aktif dan memproses kelima pesan G01-G05...");
+    console.log(
+      "⏳ Menunggu consumer aktif dan memproses kelima pesan G01-G05...",
+    );
 
-    const maxWaitMs = options.waitTimeoutMs || 30000;
+    const maxWaitMs = options.waitTimeoutMs || 120000; // 2 menit agar bisa cek dashboard RabbitMQ
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxWaitMs) {
@@ -89,7 +94,9 @@ async function jalankanU2(options = {}) {
         [`${runId}-G%`],
       );
       if (u2Db.rows[0].count === 5) {
-        console.log("✅ Worker terdeteksi pulih! Kelima pesan G01-G05 telah berhasil dikonsumsi.");
+        console.log(
+          "✅ Worker terdeteksi pulih! Kelima pesan G01-G05 telah berhasil dikonsumsi.",
+        );
         break;
       }
     }
