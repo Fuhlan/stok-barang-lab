@@ -45,6 +45,7 @@ async function jalankanU1(options = {}) {
 
   console.log("\n[U1] Mengirim 20 event valid (N01-N20, qty=3)...");
   const u1Events = [];
+  const startPublish = performance.now();
   for (let i = 1; i <= 20; i++) {
     const idStr = String(i).padStart(2, "0");
     const event = {
@@ -60,16 +61,29 @@ async function jalankanU1(options = {}) {
     await publisher.publish(event);
     u1Events.push(event);
   }
+  const publishDurasiMs = Number((performance.now() - startPublish).toFixed(2));
 
   console.log(
-    "🚀 20 event U1 terkirim ke broker. Menunggu pemrosesan worker (3 detik)...",
+    `🚀 20 event U1 terkirim ke broker (${publishDurasiMs} ms). Menunggu pemrosesan worker...`,
   );
-  await delay(3000);
-
-  const u1Db = await pool.query(
+  
+  // Polling hingga seluruh 20 pesan tercatat di database atau timeout (max 10s)
+  const startProcessing = performance.now();
+  const maxWaitMs = 10000;
+  let u1Db = await pool.query(
     "SELECT count(*)::int AS count, sum(quantity)::int AS total_qty FROM ledger_penerimaan WHERE event_id LIKE $1",
     [`${runId}-N%`],
   );
+  while (u1Db.rows[0].count < 20 && performance.now() - startProcessing < maxWaitMs) {
+    await delay(100);
+    u1Db = await pool.query(
+      "SELECT count(*)::int AS count, sum(quantity)::int AS total_qty FROM ledger_penerimaan WHERE event_id LIKE $1",
+      [`${runId}-N%`],
+    );
+  }
+  const pemrosesanDurasiMs = Number((performance.now() - startProcessing).toFixed(2));
+  const totalDurasiMs = Number((publishDurasiMs + pemrosesanDurasiMs).toFixed(2));
+
   const u1SaldoRes = await pool.query(
     "SELECT saldo FROM stok_barang WHERE sku = 'SKU-001'",
   );
@@ -78,12 +92,21 @@ async function jalankanU1(options = {}) {
   console.log(
     `[U1 Hasil] Ledger N tercatat: ${u1Db.rows[0].count}/20, Saldo saat ini: ${u1Saldo} (Target: 160)`,
   );
+  console.log(
+    `[U1 Metrik Waktu] Publish: ${publishDurasiMs} ms, Pemrosesan: ${pemrosesanDurasiMs} ms, Total: ${totalDurasiMs} ms`,
+  );
 
   const pass = u1Db.rows[0].count === 20 && u1Saldo === 160;
   const result = {
     scenario: "U1",
     runId,
+    timestamp: new Date().toISOString(),
     pass,
+    durasi: {
+      publishMs: publishDurasiMs,
+      pemrosesanMs: pemrosesanDurasiMs,
+      totalMs: totalDurasiMs,
+    },
     ledgerCount: u1Db.rows[0].count,
     totalQty: u1Db.rows[0].total_qty,
     saldo: u1Saldo,

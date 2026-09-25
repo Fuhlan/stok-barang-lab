@@ -76,14 +76,19 @@ async function jalankanU3(options = {}) {
   console.log(
     `\n[U3] Mengirim ulang (replay) ${eventsToReplay.length} event dari ledger dengan ID & payload persis sama...`,
   );
+  const startPublish = performance.now();
   for (let i = 0; i < eventsToReplay.length; i++) {
     await publisher.publish(eventsToReplay[i]);
   }
+  const publishDurasiMs = Number((performance.now() - startPublish).toFixed(2));
 
   console.log(
-    "🚀 5 event replay terkirim. Menunggu pemeriksaan idempotensi worker (2 detik)...",
+    `🚀 5 event replay terkirim (${publishDurasiMs} ms). Menunggu pemeriksaan idempotensi worker (2 detik)...`,
   );
+  const startProcessing = performance.now();
   await delay(2000);
+  const pemrosesanDurasiMs = Number((performance.now() - startProcessing).toFixed(2));
+  const totalDurasiMs = Number((publishDurasiMs + pemrosesanDurasiMs).toFixed(2));
 
   const ledgerSetelahRes = await pool.query(
     "SELECT count(*)::int AS count FROM ledger_penerimaan",
@@ -100,13 +105,22 @@ async function jalankanU3(options = {}) {
   console.log(
     `[U3 Hasil] Saldo setelah replay: ${saldoSetelah} (Sebelum: ${saldoSebelum})`,
   );
+  console.log(
+    `[U3 Metrik Waktu] Publish: ${publishDurasiMs} ms, Verifikasi Idempotensi: ${pemrosesanDurasiMs} ms, Total: ${totalDurasiMs} ms`,
+  );
 
   // Idempotensi terpenuhi jika tidak ada penambahan ledger baru dan saldo tidak berubah
   const pass = ledgerSetelah === ledgerSebelum && saldoSetelah === saldoSebelum;
   const result = {
     scenario: "U3",
     runId,
+    timestamp: new Date().toISOString(),
     pass,
+    durasi: {
+      publishMs: publishDurasiMs,
+      pemrosesanMs: pemrosesanDurasiMs,
+      totalMs: totalDurasiMs,
+    },
     ledgerSebelum,
     ledgerSetelah,
     saldoSebelum,

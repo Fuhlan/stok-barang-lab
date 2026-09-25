@@ -77,6 +77,7 @@ async function jalankanU4(options = {}) {
   };
 
   // Kirim X01 langsung via AMQP channel agar tidak dicegat HTTP express
+  const startPublish = performance.now();
   ch.publish(
     spec.exchange,
     spec.routingKey,
@@ -89,24 +90,39 @@ async function jalankanU4(options = {}) {
 
   // Kirim V01
   await publisher.publish(validEventV01);
+  const publishDurasiMs = Number((performance.now() - startPublish).toFixed(2));
+
   console.log(
-    "🚀 X01 dan V01 terkirim. Menunggu verifikasi worker (3 detik)...",
+    `🚀 X01 dan V01 terkirim (${publishDurasiMs} ms). Menunggu verifikasi worker...`,
   );
-  await delay(3000);
+  
+  // Polling hingga X01 ada di rejected_events dan V01 ada di ledger atau timeout (max 10s)
+  const startProcessing = performance.now();
+  const maxWaitMs = 10000;
+  let rejectedCountRes = { rows: [{ count: 0 }] };
+  let v01RecordedRes = { rows: [{ count: 0 }] };
+  while (performance.now() - startProcessing < maxWaitMs) {
+    rejectedCountRes = await pool.query(
+      "SELECT count(*)::int AS count FROM rejected_events WHERE event_id = $1",
+      [`${runId}-X01`],
+    );
+    v01RecordedRes = await pool.query(
+      "SELECT count(*)::int AS count FROM ledger_penerimaan WHERE event_id = $1",
+      [`${runId}-V01`],
+    );
+    if (rejectedCountRes.rows[0].count >= 1 && v01RecordedRes.rows[0].count >= 1) {
+      break;
+    }
+    await delay(100);
+  }
+  const pemrosesanDurasiMs = Number((performance.now() - startProcessing).toFixed(2));
+  const totalDurasiMs = Number((publishDurasiMs + pemrosesanDurasiMs).toFixed(2));
 
   const totalLedgerAkhirRes = await pool.query(
     "SELECT count(*)::int AS count FROM ledger_penerimaan",
   );
   const saldoAkhirRes = await pool.query(
     "SELECT saldo FROM stok_barang WHERE sku = 'SKU-001'",
-  );
-  const rejectedCountRes = await pool.query(
-    "SELECT count(*)::int AS count FROM rejected_events WHERE event_id = $1",
-    [`${runId}-X01`],
-  );
-  const v01RecordedRes = await pool.query(
-    "SELECT count(*)::int AS count FROM ledger_penerimaan WHERE event_id = $1",
-    [`${runId}-V01`],
   );
 
   const totalLedgerAkhir = totalLedgerAkhirRes.rows[0].count;
@@ -123,6 +139,9 @@ async function jalankanU4(options = {}) {
   console.log(
     `[U4 Hasil] X01 tercatat di tabel rejected_events: ${rejectedCount}`,
   );
+  console.log(
+    `[U4 Metrik Waktu] Publish: ${publishDurasiMs} ms, Pemrosesan/DLQ: ${pemrosesanDurasiMs} ms, Total: ${totalDurasiMs} ms`,
+  );
 
   // Bila dijalankan berurutan (full suite), totalLedgerAkhir = 26, saldoAkhir = 190.
   // Bila standalone, pastikan V01 bertambah 1 ledger & saldo naik +10, serta X01 ada di rejected.
@@ -137,7 +156,13 @@ async function jalankanU4(options = {}) {
   const result = {
     scenario: "U4",
     runId,
+    timestamp: new Date().toISOString(),
     pass,
+    durasi: {
+      publishMs: publishDurasiMs,
+      pemrosesanMs: pemrosesanDurasiMs,
+      totalMs: totalDurasiMs,
+    },
     totalLedgerAkhir,
     saldoAkhir,
     rejectedRecorded: rejectedCount >= 1,

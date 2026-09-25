@@ -32,6 +32,7 @@ async function jalankanU2(options = {}) {
 
   console.log("\n[U2] Mengirim 5 event baru G01-G05 (qty=4)...");
   const u2Events = [];
+  const startPublish = performance.now();
   for (let i = 1; i <= 5; i++) {
     const idStr = String(i).padStart(2, "0");
     const event = {
@@ -47,6 +48,7 @@ async function jalankanU2(options = {}) {
     await publisher.publish(event);
     u2Events.push(event);
   }
+  const publishDurasiMs = Number((performance.now() - startPublish).toFixed(2));
 
   const amqpUrl =
     process.env.AMQP_URL || "amqp://simpel:simpel123@localhost:5672";
@@ -67,6 +69,7 @@ async function jalankanU2(options = {}) {
     `[U2 Antrean] Jumlah pesan di queue 'stock_updates' saat ini: ${queuedCountInitially}`,
   );
 
+  const startProcessing = performance.now();
   let u2Db = await pool.query(
     "SELECT count(*)::int AS count, sum(quantity)::int AS total_qty FROM ledger_penerimaan WHERE event_id LIKE $1",
     [`${runId}-G%`],
@@ -100,7 +103,21 @@ async function jalankanU2(options = {}) {
         break;
       }
     }
+  } else {
+    // Jika worker sudah berjalan, pastikan kelima pesan selesai diproses
+    const maxWaitMs = 10000;
+    while (performance.now() - startProcessing < maxWaitMs) {
+      u2Db = await pool.query(
+        "SELECT count(*)::int AS count, sum(quantity)::int AS total_qty FROM ledger_penerimaan WHERE event_id LIKE $1",
+        [`${runId}-G%`],
+      );
+      if (u2Db.rows[0].count === 5) break;
+      await delay(100);
+    }
   }
+
+  const pemrosesanDurasiMs = Number((performance.now() - startProcessing).toFixed(2));
+  const totalDurasiMs = Number((publishDurasiMs + pemrosesanDurasiMs).toFixed(2));
 
   const totalLedgerRes = await pool.query(
     "SELECT count(*)::int AS count FROM ledger_penerimaan",
@@ -114,6 +131,9 @@ async function jalankanU2(options = {}) {
   console.log(
     `[U2 Hasil] Event G tercatat: ${u2Db.rows[0].count}/5. Total akumulasi ledger: ${totalLedger}, Saldo: ${u2Saldo} (Ekspektasi: 180 jika setelah U1)`,
   );
+  console.log(
+    `[U2 Metrik Waktu] Publish: ${publishDurasiMs} ms, Pemrosesan/Recovery: ${pemrosesanDurasiMs} ms, Total: ${totalDurasiMs} ms`,
+  );
 
   const pass =
     u2Db.rows[0].count === 5 &&
@@ -121,7 +141,14 @@ async function jalankanU2(options = {}) {
   const result = {
     scenario: "U2",
     runId,
+    timestamp: new Date().toISOString(),
     pass,
+    durasi: {
+      publishMs: publishDurasiMs,
+      pemrosesanMs: pemrosesanDurasiMs,
+      totalMs: totalDurasiMs,
+    },
+    queuedCountInitially,
     ledgerGCount: u2Db.rows[0].count,
     totalLedger,
     saldo: u2Saldo,
